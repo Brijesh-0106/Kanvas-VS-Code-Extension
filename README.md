@@ -1,8 +1,12 @@
 # Kanvas
 
-![Kanvas Diagram Editor in VS Code](preview.png)
+![Kanvas Header Banner](header.png)
 
 A hand-drawn style diagramming/whiteboard canvas that opens as a custom editor for `.kanvas` files, right inside VS Code.
+
+## Preview
+
+![Kanvas Diagram Editor in VS Code](preview.png)
 
 ## Features
 
