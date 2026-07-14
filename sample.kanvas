@@ -1,0 +1,35 @@
+{
+  "elements": [
+    {
+      "id": "el_sample1",
+      "type": "rectangle",
+      "x": 120,
+      "y": 120,
+      "width": 220,
+      "height": 120,
+      "strokeColor": "#ffffff",
+      "fillColor": "transparent",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "fillStyle": "hachure",
+      "roughness": 1.5,
+      "seed": 12345
+    },
+    {
+      "id": "el_sample2",
+      "type": "text",
+      "x": 150,
+      "y": 160,
+      "width": 200,
+      "height": 25,
+      "text": "Welcome to Kanvas!",
+      "fontSize": 20,
+      "fontFamily": "handwritten",
+      "strokeColor": "#ffffff",
+      "fillColor": "transparent",
+      "strokeWidth": 2,
+      "seed": 6789
+    }
+  ],
+  "appState": {}
+}
