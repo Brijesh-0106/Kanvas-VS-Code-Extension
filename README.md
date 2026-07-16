@@ -25,6 +25,7 @@ A hand-drawn style diagramming/whiteboard canvas that opens as a custom editor f
 - **Camera controls**: Pan (space+drag or middle-click drag) and Zoom (Ctrl + scroll or bottom-right buttons).
 - **Exporting**: Export to PNG or SVG via command palette or controls.
 - **Autosave & Dirty-tracking**: Integrates with VS Code's tab UI.
+- **GitHub Preview Integration**: Automatically generates/updates a companion SVG preview (`[filename].kanvas.svg`) next to your `.kanvas` file on save. Committing both files enables native drawing previews on GitHub.
 
 ## Project Layout
 

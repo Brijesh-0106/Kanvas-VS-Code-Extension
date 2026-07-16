@@ -815,7 +815,7 @@
       if (e.key === ']') { e.preventDefault(); bringSelectedToFront(); return; }
     }
 
-    if (e.key.toLowerCase() === 'g') {
+    if (e.key.toLowerCase() === 'g' && !e.ctrlKey && !e.metaKey) {
       gridEnabled = !gridEnabled;
       const gridBtn = document.getElementById('gridToggleBtn');
       if (gridBtn) gridBtn.classList.toggle('active', gridEnabled);
@@ -823,7 +823,7 @@
       return;
     }
 
-    if (e.key.toLowerCase() === 's') {
+    if (e.key.toLowerCase() === 's' && !e.ctrlKey && !e.metaKey) {
       e.preventDefault();
       toggleStylePanel();
       return;
@@ -1334,28 +1334,33 @@
   });
 
   document.getElementById('clearAllBtn').addEventListener('click', () => {
-    if (confirm('Are you sure you want to clear the entire canvas?')) {
-      elements = [];
-      selectedIds.clear();
-      updateStylePanelFromSelection();
-      commit('Clear all');
-    }
+    vscode.postMessage({ type: 'requestClearAll' });
   });
 
   // ---------- Export ----------
   function computeContentBox() {
-    if (elements.length === 0) return { x: 0, y: 0, w: 400, h: 300 };
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    const w = canvas.width / (window.devicePixelRatio || 1);
+    const h = canvas.height / (window.devicePixelRatio || 1);
+    const visibleTopLeft = screenToWorld(0, 0);
+    const visibleBottomRight = screenToWorld(w, h);
+
+    let minX = visibleTopLeft.x;
+    let minY = visibleTopLeft.y;
+    let maxX = visibleBottomRight.x;
+    let maxY = visibleBottomRight.y;
+
     for (const el of elements) {
       const b = boundingBoxOf(el);
-      minX = Math.min(minX, b.x); minY = Math.min(minY, b.y);
-      maxX = Math.max(maxX, b.x + b.w); maxY = Math.max(maxY, b.y + b.h);
+      minX = Math.min(minX, b.x);
+      minY = Math.min(minY, b.y);
+      maxX = Math.max(maxX, b.x + b.w);
+      maxY = Math.max(maxY, b.y + b.h);
     }
     const pad = 24;
     return { x: minX - pad, y: minY - pad, w: (maxX - minX) + pad * 2, h: (maxY - minY) + pad * 2 };
   }
 
-  function exportPng() {
+  function exportPng(purpose, targetUri) {
     const box = computeContentBox();
     const off = document.createElement('canvas');
     const scale = 2;
@@ -1369,7 +1374,7 @@
     const offRc = rough.canvas(off);
     for (const el of elements) drawElementWith(offCtx, offRc, el);
     const data = off.toDataURL('image/png');
-    vscode.postMessage({ type: 'exportResult', body: { format: 'png', data } });
+    vscode.postMessage({ type: 'exportResult', body: { format: 'png', data, purpose, targetUri } });
   }
 
   function drawElementWith(dCtx, dRc, el) {
@@ -1417,7 +1422,7 @@
     }
   }
 
-  function exportSvg() {
+  function exportSvg(purpose, targetUri) {
     const box = computeContentBox();
     const svgNS = 'http://www.w3.org/2000/svg';
     const svg = document.createElementNS(svgNS, 'svg');
@@ -1478,13 +1483,22 @@
           node.textContent = el.text;
           break;
         }
+        case 'image': {
+          node = document.createElementNS(svgNS, 'image');
+          node.setAttribute('x', String(el.x));
+          node.setAttribute('y', String(el.y));
+          node.setAttribute('width', String(el.width));
+          node.setAttribute('height', String(el.height));
+          node.setAttribute('href', el.src);
+          break;
+        }
       }
       if (node) svg.appendChild(node);
     }
 
     const serializer = new XMLSerializer();
     const data = serializer.serializeToString(svg);
-    vscode.postMessage({ type: 'exportResult', body: { format: 'svg', data } });
+    vscode.postMessage({ type: 'exportResult', body: { format: 'svg', data, purpose, targetUri } });
   }
 
   // ---------- Message handling from extension ----------
@@ -1509,8 +1523,15 @@
         break;
       }
       case 'requestExport': {
-        if (msg.body.format === 'png') exportPng();
-        else exportSvg();
+        if (msg.body.format === 'png') exportPng(msg.body.purpose, msg.body.targetUri);
+        else exportSvg(msg.body.purpose, msg.body.targetUri);
+        break;
+      }
+      case 'clearAll': {
+        elements = [];
+        selectedIds.clear();
+        updateStylePanelFromSelection();
+        commit('Clear all');
         break;
       }
     }

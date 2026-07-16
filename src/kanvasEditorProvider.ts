@@ -46,6 +46,7 @@ export class KanvasEditorProvider implements vscode.CustomEditorProvider<KanvasD
   private static readonly viewType = 'kanvas.canvas';
 
   private activeWebviewPanel: vscode.WebviewPanel | undefined;
+  private readonly webviewPanels = new Map<string, vscode.WebviewPanel>();
 
   private readonly _onDidChangeCustomDocument = new vscode.EventEmitter<vscode.CustomDocumentEditEvent<KanvasDocument>>();
   public readonly onDidChangeCustomDocument = this._onDidChangeCustomDocument.event;
@@ -57,7 +58,29 @@ export class KanvasEditorProvider implements vscode.CustomEditorProvider<KanvasD
     openContext: vscode.CustomDocumentOpenContext,
     _token: vscode.CancellationToken
   ): Promise<KanvasDocument> {
-    const document = await KanvasDocument.create(uri, openContext.backupId);
+    const document = await KanvasDocument.create(uri, openContext.backupId, async (doc) => {
+      const diskScene = await KanvasDocument.readFile(doc.uri);
+      
+      if (JSON.stringify(diskScene) === JSON.stringify(doc.scene)) {
+        return;
+      }
+
+      if (doc.isDirty) {
+        const option = await vscode.window.showWarningMessage(
+          `The file '${vscode.workspace.asRelativePath(doc.uri)}' has been changed on disk. Do you want to reload it and discard your unsaved changes?`,
+          'Reload',
+          'Ignore'
+        );
+        if (option !== 'Reload') {
+          return;
+        }
+        
+        await vscode.commands.executeCommand('vscode.openWith', doc.uri, KanvasEditorProvider.viewType);
+        await vscode.commands.executeCommand('workbench.action.files.revert');
+      } else {
+        await doc.revert();
+      }
+    });
 
     document.onDidChangeContent(e => {
       this._onDidChangeCustomDocument.fire({
@@ -69,7 +92,10 @@ export class KanvasEditorProvider implements vscode.CustomEditorProvider<KanvasD
     });
 
     document.onDidChangeSceneForWebview(scene => {
-      this.postMessage({ type: 'sceneUpdate', body: scene });
+      const panel = this.webviewPanels.get(document.uri.toString());
+      if (panel) {
+        panel.webview.postMessage({ type: 'sceneUpdate', body: scene });
+      }
     });
 
     return document;
@@ -80,6 +106,12 @@ export class KanvasEditorProvider implements vscode.CustomEditorProvider<KanvasD
     webviewPanel: vscode.WebviewPanel,
     _token: vscode.CancellationToken
   ): Promise<void> {
+    const uriStr = document.uri.toString();
+    this.webviewPanels.set(uriStr, webviewPanel);
+    webviewPanel.onDidDispose(() => {
+      this.webviewPanels.delete(uriStr);
+    });
+
     this.activeWebviewPanel = webviewPanel;
     webviewPanel.onDidChangeViewState(e => {
       if (e.webviewPanel.active) {
@@ -102,6 +134,16 @@ export class KanvasEditorProvider implements vscode.CustomEditorProvider<KanvasD
           break;
         }
         case 'exportResult': {
+          if (msg.body.purpose === 'preview' && msg.body.targetUri) {
+            try {
+              const targetUri = vscode.Uri.parse(msg.body.targetUri);
+              const previewUri = targetUri.with({ path: targetUri.path + '.svg' });
+              await vscode.workspace.fs.writeFile(previewUri, Buffer.from(msg.body.data, 'utf8'));
+            } catch (e) {
+              console.error('Failed to write SVG preview:', e);
+            }
+            break;
+          }
           await this.handleExportResult(msg.body);
           break;
         }
@@ -113,16 +155,35 @@ export class KanvasEditorProvider implements vscode.CustomEditorProvider<KanvasD
           await vscode.commands.executeCommand('redo');
           break;
         }
+        case 'requestClearAll': {
+          const option = await vscode.window.showWarningMessage(
+            'Are you sure you want to clear the entire canvas?',
+            { modal: true },
+            'Clear'
+          );
+          if (option === 'Clear') {
+            this.post(webviewPanel, { type: 'clearAll' });
+          }
+          break;
+        }
       }
     });
   }
 
   async saveCustomDocument(document: KanvasDocument, cancellation: vscode.CancellationToken): Promise<void> {
     await document.save(cancellation);
+    const panel = this.webviewPanels.get(document.uri.toString());
+    if (panel) {
+      this.post(panel, { type: 'requestExport', body: { format: 'svg', purpose: 'preview', targetUri: document.uri.toString() } });
+    }
   }
 
   async saveCustomDocumentAs(document: KanvasDocument, destination: vscode.Uri, cancellation: vscode.CancellationToken): Promise<void> {
     await document.saveAs(destination, cancellation);
+    const panel = this.webviewPanels.get(document.uri.toString());
+    if (panel) {
+      this.post(panel, { type: 'requestExport', body: { format: 'svg', purpose: 'preview', targetUri: destination.toString() } });
+    }
   }
 
   async revertCustomDocument(document: KanvasDocument, _cancellation: vscode.CancellationToken): Promise<void> {
@@ -232,10 +293,6 @@ export class KanvasEditorProvider implements vscode.CustomEditorProvider<KanvasD
       </div>
       <span class="sep"></span>
       <div class="history-group">
-        <button id="toggleStylePanelBtn" title="Toggle Styles (S)" class="active">
-          <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 14.7255 3.09032 17.1962 4.85857 19C5.03345 20.2592 6.0468 21.2827 7.30722 21.4396C7.76077 21.496 8.21957 21.3643 8.57245 21.0772C8.94825 21.6575 9.59345 22 10.3204 22H12Z"/><circle cx="7.5" cy="10.5" r="1.5" fill="currentColor"/><circle cx="11.5" cy="7.5" r="1.5" fill="currentColor"/><circle cx="16.5" cy="9.5" r="1.5" fill="currentColor"/><circle cx="15.5" cy="14.5" r="1.5" fill="currentColor"/></svg>
-        </button>
-        <span class="sep" style="height: 18px; margin: 0 4px; align-self: center;"></span>
         <button id="undoBtn" title="Undo (Ctrl+Z)">
           <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>
         </button>
@@ -353,13 +410,10 @@ export class KanvasEditorProvider implements vscode.CustomEditorProvider<KanvasD
       </div>
     </div>
 
-    <!-- Bottom Left Logo & Help info -->
-    <div id="brand-info">
-      <div class="logo">
-        <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px; vertical-align: middle;"><path d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.52285 22 12 22Z"/><path d="M12 8L16 12L12 16L8 12Z" fill="currentColor"/></svg>
-        <span>Kanvas</span>
-      </div>
-    </div>
+    <!-- Hamburger Button -->
+    <button id="toggleStylePanelBtn" title="Toggle Styles (S)" class="hamburger-btn">
+      <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
 
     <!-- Bottom Right controls: Zoom and Grid -->
     <div id="canvas-controls">

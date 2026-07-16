@@ -51,6 +51,7 @@ export class SketchEditorProvider implements vscode.CustomEditorProvider<SketchD
   private static readonly viewType = 'sketchEditor.canvas';
 
   private activeWebviewPanel: vscode.WebviewPanel | undefined;
+  private readonly webviewPanels = new Map<string, vscode.WebviewPanel>();
 
   private readonly _onDidChangeCustomDocument = new vscode.EventEmitter<vscode.CustomDocumentEditEvent<SketchDocument>>();
   public readonly onDidChangeCustomDocument = this._onDidChangeCustomDocument.event;
@@ -62,7 +63,29 @@ export class SketchEditorProvider implements vscode.CustomEditorProvider<SketchD
     openContext: vscode.CustomDocumentOpenContext,
     _token: vscode.CancellationToken
   ): Promise<SketchDocument> {
-    const document = await SketchDocument.create(uri, openContext.backupId);
+    const document = await SketchDocument.create(uri, openContext.backupId, async (doc) => {
+      const diskScene = await SketchDocument.readFile(doc.uri);
+      
+      if (JSON.stringify(diskScene) === JSON.stringify(doc.scene)) {
+        return;
+      }
+
+      if (doc.isDirty) {
+        const option = await vscode.window.showWarningMessage(
+          `The file '${vscode.workspace.asRelativePath(doc.uri)}' has been changed on disk. Do you want to reload it and discard your unsaved changes?`,
+          'Reload',
+          'Ignore'
+        );
+        if (option !== 'Reload') {
+          return;
+        }
+        
+        await vscode.commands.executeCommand('vscode.openWith', doc.uri, SketchEditorProvider.viewType);
+        await vscode.commands.executeCommand('workbench.action.files.revert');
+      } else {
+        await doc.revert();
+      }
+    });
 
     document.onDidChangeContent(e => {
       this._onDidChangeCustomDocument.fire({
@@ -74,7 +97,10 @@ export class SketchEditorProvider implements vscode.CustomEditorProvider<SketchD
     });
 
     document.onDidChangeSceneForWebview(scene => {
-      this.postMessage({ type: 'sceneUpdate', body: scene });
+      const panel = this.webviewPanels.get(document.uri.toString());
+      if (panel) {
+        panel.webview.postMessage({ type: 'sceneUpdate', body: scene });
+      }
     });
 
     return document;
@@ -85,6 +111,12 @@ export class SketchEditorProvider implements vscode.CustomEditorProvider<SketchD
     webviewPanel: vscode.WebviewPanel,
     _token: vscode.CancellationToken
   ): Promise<void> {
+    const uriStr = document.uri.toString();
+    this.webviewPanels.set(uriStr, webviewPanel);
+    webviewPanel.onDidDispose(() => {
+      this.webviewPanels.delete(uriStr);
+    });
+
     this.activeWebviewPanel = webviewPanel;
     webviewPanel.onDidChangeViewState(e => {
       if (e.webviewPanel.active) {

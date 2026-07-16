@@ -18,14 +18,17 @@ function emptyScene(): SketchScene {
 export class SketchDocument implements vscode.CustomDocument {
   static async create(
     uri: vscode.Uri,
-    backupId: string | undefined
+    backupId: string | undefined,
+    onWatcherChange: (document: SketchDocument) => void
   ): Promise<SketchDocument> {
     const dataUri = backupId ? vscode.Uri.parse(backupId) : uri;
     const scene = await SketchDocument.readFile(dataUri);
-    return new SketchDocument(uri, scene);
+    const doc = new SketchDocument(uri, scene);
+    doc.startWatcher(onWatcherChange);
+    return doc;
   }
 
-  private static async readFile(uri: vscode.Uri): Promise<SketchScene> {
+  public static async readFile(uri: vscode.Uri): Promise<SketchScene> {
     if (uri.scheme === 'untitled') {
       return emptyScene();
     }
@@ -46,6 +49,7 @@ export class SketchDocument implements vscode.CustomDocument {
   private _scene: SketchScene;
   private _edits: SketchEdit[] = [];
   private _savedSceneJson: string;
+  private _watcher: vscode.FileSystemWatcher | undefined;
 
   private readonly _onDidDispose = new vscode.EventEmitter<void>();
   public readonly onDidDispose = this._onDidDispose.event;
@@ -66,6 +70,24 @@ export class SketchDocument implements vscode.CustomDocument {
     this._savedSceneJson = JSON.stringify(scene);
   }
 
+  private startWatcher(onWatcherChange: (document: SketchDocument) => void) {
+    if (this._uri.scheme !== 'file') {
+      return;
+    }
+    const workspaceFolder = vscode.workspace.getWorkspaceFolder(this._uri);
+    if (workspaceFolder) {
+      this._watcher = vscode.workspace.createFileSystemWatcher(
+        new vscode.RelativePattern(workspaceFolder, vscode.workspace.asRelativePath(this._uri))
+      );
+    } else {
+      this._watcher = vscode.workspace.createFileSystemWatcher(this._uri.fsPath);
+    }
+
+    this._watcher.onDidChange(async () => {
+      onWatcherChange(this);
+    });
+  }
+
   public get uri(): vscode.Uri {
     return this._uri;
   }
@@ -79,6 +101,9 @@ export class SketchDocument implements vscode.CustomDocument {
   }
 
   dispose(): void {
+    if (this._watcher) {
+      this._watcher.dispose();
+    }
     this._onDidDispose.fire();
   }
 
