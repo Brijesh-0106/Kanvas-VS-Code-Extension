@@ -27,7 +27,8 @@
     fillStyle: 'hachure',      // 'hachure' | 'cross-hatch' | 'solid'
     roughness: 1.5,
     fontFamily: 'handwritten', // 'handwritten' | 'sans-serif' | 'monospace'
-    brushType: 'pencil'        // 'pencil' | 'highlighter'
+    brushType: 'pencil',       // 'pencil' | 'highlighter'
+    arrowhead: 'arrow'         // 'arrow' | 'bar' | 'dot' | 'triangle'
   };
   const camera = { x: 0, y: 0, zoom: 1 };
   let gridEnabled = true;
@@ -586,6 +587,16 @@
     });
   });
 
+  // Arrow Head
+  const arrowheadButtons = document.querySelectorAll('#arrowhead-group .toggle-btn');
+  arrowheadButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      style.arrowhead = btn.dataset.val;
+      arrowheadButtons.forEach(b => b.classList.toggle('active', b === btn));
+      applyStyleToSelection();
+    });
+  });
+
   // Image Loader
   const imageLoader = document.getElementById('imageLoader');
   if (imageLoader) {
@@ -689,6 +700,9 @@
         if (el.type === 'draw') {
           el.brushType = style.brushType;
         }
+        if (el.type === 'arrow') {
+          el.arrowhead = style.arrowhead;
+        }
       }
     }
     redraw();
@@ -728,6 +742,16 @@
           document.querySelector('.font-section').style.display = 'none';
         }
 
+        if (el.type === 'arrow') {
+          style.arrowhead = el.arrowhead || 'arrow';
+          updateToggleGroupActive('arrowhead-group', style.arrowhead);
+          const arrowheadSec = document.querySelector('.arrowhead-section');
+          if (arrowheadSec) arrowheadSec.style.display = 'block';
+        } else {
+          const arrowheadSec = document.querySelector('.arrowhead-section');
+          if (arrowheadSec) arrowheadSec.style.display = 'none';
+        }
+
         const brushSec = document.querySelector('.brush-section');
         if (brushSec) {
           if (el.type === 'draw') {
@@ -746,6 +770,13 @@
       });
       document.querySelector('.font-section').style.display = hasText ? 'block' : 'none';
 
+      const hasArrow = [...selectedIds].some(id => {
+        const el = elements.find(e => e.id === id);
+        return el && el.type === 'arrow';
+      });
+      const arrowheadSec = document.querySelector('.arrowhead-section');
+      if (arrowheadSec) arrowheadSec.style.display = hasArrow ? 'block' : 'none';
+
       const hasDraw = [...selectedIds].some(id => {
         const el = elements.find(e => e.id === id);
         return el && el.type === 'draw';
@@ -754,6 +785,8 @@
       if (brushSec) brushSec.style.display = hasDraw ? 'block' : 'none';
     } else {
       document.querySelector('.font-section').style.display = tool === 'text' ? 'block' : 'none';
+      const arrowheadSec = document.querySelector('.arrowhead-section');
+      if (arrowheadSec) arrowheadSec.style.display = tool === 'arrow' ? 'block' : 'none';
       const brushSec = document.querySelector('.brush-section');
       if (brushSec) brushSec.style.display = tool === 'draw' ? 'block' : 'none';
     }
@@ -963,6 +996,9 @@
     if (tool === 'draw') {
       base.points = [{ x: 0, y: 0 }];
       base.brushType = style.brushType || 'pencil';
+    }
+    if (tool === 'arrow') {
+      base.arrowhead = style.arrowhead || 'arrow';
     }
     draft = base;
     dragMode = 'draft';
@@ -1393,10 +1429,34 @@
         const x1 = el.x, y1 = el.y, x2 = el.x + el.width, y2 = el.y + el.height;
         dRc.line(x1, y1, x2, y2, opts);
         const angle = Math.atan2(y2 - y1, x2 - x1);
-        const headLen = 14 + el.strokeWidth * 2;
-        const a1 = angle + Math.PI - 0.4, a2 = angle + Math.PI + 0.4;
-        dRc.line(x2, y2, x2 + headLen * Math.cos(a1), y2 + headLen * Math.sin(a1), opts);
-        dRc.line(x2, y2, x2 + headLen * Math.cos(a2), y2 + headLen * Math.sin(a2), opts);
+        const headLen = 12 + el.strokeWidth * 2;
+        const headStyle = el.arrowhead || 'arrow';
+
+        if (headStyle === 'arrow') {
+          const a1 = angle + Math.PI - 0.4, a2 = angle + Math.PI + 0.4;
+          dRc.line(x2, y2, x2 + headLen * Math.cos(a1), y2 + headLen * Math.sin(a1), opts);
+          dRc.line(x2, y2, x2 + headLen * Math.cos(a2), y2 + headLen * Math.sin(a2), opts);
+        } else if (headStyle === 'bar') {
+          const perpAngle = angle + Math.PI / 2;
+          const halfBar = headLen * 0.7;
+          const bx1 = x2 + halfBar * Math.cos(perpAngle);
+          const by1 = y2 + halfBar * Math.sin(perpAngle);
+          const bx2 = x2 - halfBar * Math.cos(perpAngle);
+          const by2 = y2 - halfBar * Math.sin(perpAngle);
+          dRc.line(bx1, by1, bx2, by2, opts);
+        } else if (headStyle === 'dot') {
+          const r = 5 + el.strokeWidth;
+          const cx = x2 - r * Math.cos(angle);
+          const cy = y2 - r * Math.sin(angle);
+          dRc.ellipse(cx, cy, r * 2, r * 2, { ...opts, fill: el.strokeColor, fillStyle: 'solid' });
+        } else if (headStyle === 'triangle') {
+          const a1 = angle + Math.PI - 0.4, a2 = angle + Math.PI + 0.4;
+          const tx1 = x2 + headLen * Math.cos(a1);
+          const ty1 = y2 + headLen * Math.sin(a1);
+          const tx2 = x2 + headLen * Math.cos(a2);
+          const ty2 = y2 + headLen * Math.sin(a2);
+          dRc.polygon([[x2, y2], [tx1, ty1], [tx2, ty2]], { ...opts, fill: el.strokeColor, fillStyle: 'solid' });
+        }
         break;
       }
       case 'draw': {
@@ -1455,10 +1515,34 @@
           const x1 = el.x, y1 = el.y, x2 = el.x + el.width, y2 = el.y + el.height;
           g.appendChild(rsvg.line(x1, y1, x2, y2, opts));
           const angle = Math.atan2(y2 - y1, x2 - x1);
-          const headLen = 14 + el.strokeWidth * 2;
-          const a1 = angle + Math.PI - 0.4, a2 = angle + Math.PI + 0.4;
-          g.appendChild(rsvg.line(x2, y2, x2 + headLen * Math.cos(a1), y2 + headLen * Math.sin(a1), opts));
-          g.appendChild(rsvg.line(x2, y2, x2 + headLen * Math.cos(a2), y2 + headLen * Math.sin(a2), opts));
+          const headLen = 12 + el.strokeWidth * 2;
+          const headStyle = el.arrowhead || 'arrow';
+
+          if (headStyle === 'arrow') {
+            const a1 = angle + Math.PI - 0.4, a2 = angle + Math.PI + 0.4;
+            g.appendChild(rsvg.line(x2, y2, x2 + headLen * Math.cos(a1), y2 + headLen * Math.sin(a1), opts));
+            g.appendChild(rsvg.line(x2, y2, x2 + headLen * Math.cos(a2), y2 + headLen * Math.sin(a2), opts));
+          } else if (headStyle === 'bar') {
+            const perpAngle = angle + Math.PI / 2;
+            const halfBar = headLen * 0.7;
+            const bx1 = x2 + halfBar * Math.cos(perpAngle);
+            const by1 = y2 + halfBar * Math.sin(perpAngle);
+            const bx2 = x2 - halfBar * Math.cos(perpAngle);
+            const by2 = y2 - halfBar * Math.sin(perpAngle);
+            g.appendChild(rsvg.line(bx1, by1, bx2, by2, opts));
+          } else if (headStyle === 'dot') {
+            const r = 5 + el.strokeWidth;
+            const cx = x2 - r * Math.cos(angle);
+            const cy = y2 - r * Math.sin(angle);
+            g.appendChild(rsvg.ellipse(cx, cy, r * 2, r * 2, { ...opts, fill: el.strokeColor, fillStyle: 'solid' }));
+          } else if (headStyle === 'triangle') {
+            const a1 = angle + Math.PI - 0.4, a2 = angle + Math.PI + 0.4;
+            const tx1 = x2 + headLen * Math.cos(a1);
+            const ty1 = y2 + headLen * Math.sin(a1);
+            const tx2 = x2 + headLen * Math.cos(a2);
+            const ty2 = y2 + headLen * Math.sin(a2);
+            g.appendChild(rsvg.polygon([[x2, y2], [tx1, ty1], [tx2, ty2]], { ...opts, fill: el.strokeColor, fillStyle: 'solid' }));
+          }
           node = g;
           break;
         }

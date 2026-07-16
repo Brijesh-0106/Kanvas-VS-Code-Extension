@@ -394,6 +394,16 @@ export class KanvasEditorProvider implements vscode.CustomEditorProvider<KanvasD
         </div>
       </div>
 
+      <div class="panel-section arrowhead-section" style="display: none;">
+        <label>Arrow Head</label>
+        <div class="toggle-group" id="arrowhead-group">
+          <button data-val="arrow" class="toggle-btn active" title="Arrow">Arrow</button>
+          <button data-val="bar" class="toggle-btn" title="Bar">Bar</button>
+          <button data-val="dot" class="toggle-btn" title="Dot">Dot</button>
+          <button data-val="triangle" class="toggle-btn" title="Triangle">Triangle</button>
+        </div>
+      </div>
+
       <div class="panel-section actions-section">
         <label>Layers / Actions</label>
         <div class="action-buttons">

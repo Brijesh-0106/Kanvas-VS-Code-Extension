@@ -2,7 +2,7 @@
   "name": "kanvas",
   "displayName": "Kanvas",
   "description": "A hand-drawn style diagram/sketch editor for .kanvas files.",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "publisher": "Phenomenal1",
   "icon": "icon.png",
   "repository": {
