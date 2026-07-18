@@ -2,7 +2,7 @@
   "name": "kanvas",
   "displayName": "Kanvas",
   "description": "A hand-drawn style diagram/sketch editor for .kanvas files.",
-  "version": "0.1.12",
+  "version": "0.1.14",
   "publisher": "Phenomenal1",
   "icon": "icon.png",
   "repository": {
@@ -10,7 +10,7 @@
     "url": "https://github.com/Brijesh-0106/Kanvas-VS-Code-Extension"
   },
   "engines": {
-    "vscode": "^1.85.0"
+    "vscode": "^1.68.0"
   },
   "categories": [
     "Other"
@@ -81,7 +81,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
-    "@types/vscode": "^1.85.0",
+    "@types/vscode": "^1.68.0",
     "typescript": "^5.4.0"
   },
   "dependencies": {

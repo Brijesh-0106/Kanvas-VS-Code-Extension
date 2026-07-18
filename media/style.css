@@ -231,7 +231,7 @@ html, body {
 }
 
 .color-swatch.active {
-  border-color: var(--accent-color);
+  border-color: var(--text-primary);
   transform: scale(1.1);
   box-shadow: 0 0 0 2px var(--bg-panel), 0 0 8px color-mix(in srgb, var(--accent-color) 40%, transparent);
 }
@@ -253,6 +253,13 @@ html, body {
 .custom-color-container:hover {
   border-color: var(--accent-color);
   transform: scale(1.2);
+}
+
+.custom-color-container.active {
+  border-color: var(--text-primary);
+  border-style: solid;
+  transform: scale(1.1);
+  box-shadow: 0 0 0 2px var(--bg-panel), 0 0 8px color-mix(in srgb, var(--accent-color) 40%, transparent);
 }
 
 .custom-color-container input[type="color"] {

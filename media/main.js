@@ -153,6 +153,7 @@
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (const el of elements) {
       if (!selectedIds.has(el.id)) continue;
+      if (el.editing) continue;
       const b = boundingBoxOf(el);
       minX = Math.min(minX, b.x); minY = Math.min(minY, b.y);
       maxX = Math.max(maxX, b.x + b.w); maxY = Math.max(maxY, b.y + b.h);
@@ -497,7 +498,7 @@
     swatch.addEventListener('click', () => {
       style.strokeColor = swatch.dataset.color;
       document.getElementById('strokeColor').value = swatch.dataset.color.startsWith('#') ? swatch.dataset.color : '#ffffff';
-      strokeSwatches.forEach(s => s.classList.toggle('active', s === swatch));
+      updateColorPaletteActive('stroke-palette', swatch.dataset.color);
       applyStyleToSelection();
     });
   });
@@ -505,7 +506,7 @@
   // Stroke Color Picker
   document.getElementById('strokeColor').addEventListener('input', (e) => {
     style.strokeColor = e.target.value;
-    strokeSwatches.forEach(s => s.classList.remove('active'));
+    updateColorPaletteActive('stroke-palette', e.target.value);
     applyStyleToSelection();
   });
 
@@ -515,7 +516,7 @@
     swatch.addEventListener('click', () => {
       style.fillColor = swatch.dataset.color;
       document.getElementById('fillColor').value = swatch.dataset.color.startsWith('#') ? swatch.dataset.color : '#000000';
-      fillSwatches.forEach(s => s.classList.toggle('active', s === swatch));
+      updateColorPaletteActive('fill-palette', swatch.dataset.color);
       applyStyleToSelection();
     });
   });
@@ -523,7 +524,7 @@
   // Fill Color Picker
   document.getElementById('fillColor').addEventListener('input', (e) => {
     style.fillColor = e.target.value;
-    fillSwatches.forEach(s => s.classList.remove('active'));
+    updateColorPaletteActive('fill-palette', e.target.value);
     applyStyleToSelection();
   });
 
@@ -714,13 +715,15 @@
       const id = [...selectedIds][0];
       const el = elements.find(e => e.id === id);
       if (el) {
-        style.strokeColor = el.strokeColor;
-        document.getElementById('strokeColor').value = el.strokeColor.startsWith('#') ? el.strokeColor : '#ffffff';
-        updateColorPaletteActive('stroke-palette', el.strokeColor);
+        const strokeColor = el.strokeColor || '#ffffff';
+        style.strokeColor = strokeColor;
+        document.getElementById('strokeColor').value = strokeColor.startsWith('#') ? strokeColor : '#ffffff';
+        updateColorPaletteActive('stroke-palette', strokeColor);
 
-        style.fillColor = el.fillColor || 'transparent';
-        document.getElementById('fillColor').value = el.fillColor.startsWith('#') ? el.fillColor : '#000000';
-        updateColorPaletteActive('fill-palette', el.fillColor || 'transparent');
+        const fillColor = el.fillColor || 'transparent';
+        style.fillColor = fillColor;
+        document.getElementById('fillColor').value = fillColor.startsWith('#') ? fillColor : '#000000';
+        updateColorPaletteActive('fill-palette', fillColor);
 
         style.strokeWidth = el.strokeWidth || 2;
         updateToggleGroupActive('stroke-width-group', String(style.strokeWidth));
@@ -796,15 +799,16 @@
     const palette = document.getElementById(paletteId);
     if (!palette) return;
     const swatches = palette.querySelectorAll('.color-swatch');
+    let hasMatch = false;
     swatches.forEach(swatch => {
       const match = swatch.dataset.color === value;
       swatch.classList.toggle('active', match);
-      if (match) {
-        swatch.style.borderColor = 'var(--text-primary)';
-      } else {
-        swatch.style.borderColor = 'transparent';
-      }
+      if (match) hasMatch = true;
     });
+    const customContainer = palette.querySelector('.custom-color-container');
+    if (customContainer) {
+      customContainer.classList.toggle('active', !hasMatch && value !== 'transparent');
+    }
   }
 
   function updateToggleGroupActive(groupId, value) {
@@ -826,6 +830,29 @@
 
   // ---------- Keyboard shortcuts ----------
   const KEY_TOOL = { v: 'selection', r: 'rectangle', o: 'ellipse', d: 'diamond', a: 'arrow', l: 'line', p: 'draw', t: 'text', e: 'eraser', i: 'image' };
+  function duplicateSelected() {
+    if (selectedIds.size === 0) return;
+    const newSelectedIds = new Set();
+    const duplicatedElements = [];
+    const offset = 20;
+    for (const el of elements) {
+      if (selectedIds.has(el.id)) {
+        const dup = clone(el);
+        dup.id = uid();
+        dup.seed = seedFor();
+        dup.x += offset;
+        dup.y += offset;
+        duplicatedElements.push(dup);
+        newSelectedIds.add(dup.id);
+      }
+    }
+    elements = [...elements, ...duplicatedElements];
+    selectedIds = newSelectedIds;
+    updateStylePanelFromSelection();
+    redraw();
+    commit('Duplicate');
+  }
+
   window.addEventListener('keydown', (e) => {
     if (document.activeElement === textInput) return;
     if (e.key === ' ') { spaceDown = true; canvas.style.cursor = 'grab'; return; }
@@ -834,6 +861,7 @@
 
     // Ctrl/Meta shortcuts
     if (e.ctrlKey || e.metaKey) {
+      if (e.key === 'd' || e.key === 'D') { e.preventDefault(); duplicateSelected(); return; }
       if (e.key === '=' || e.key === '+') { e.preventDefault(); zoomIn(); return; }
       if (e.key === '-') { e.preventDefault(); zoomOut(); return; }
       if (e.key === '0') { e.preventDefault(); resetZoom(); return; }
@@ -1212,7 +1240,7 @@
     textInput.style.left = screenX + 'px';
     textInput.style.top = screenY + 'px';
     textInput.style.display = 'block';
-    textInput.style.fontSize = (20 * camera.zoom) + 'px';
+    textInput.style.fontSize = ((el.fontSize || 20) * camera.zoom) + 'px';
     textInput.style.color = el.strokeColor;
 
     let fontStr = 'sans-serif';
@@ -1282,10 +1310,10 @@
           } else if (el.fontFamily === 'monospace') {
             fontStr = '"Courier New", Courier, monospace';
           }
-          ctx.font = `20px ${fontStr}`;
+          ctx.font = `${el.fontSize || 20}px ${fontStr}`;
           const lines = text.split('\n');
           el.width = Math.max(...lines.map(l => ctx.measureText(l).width), 20);
-          el.height = lines.length * 20 * 1.25;
+          el.height = lines.length * (el.fontSize || 20) * 1.25;
           commit('Edit text');
         } else {
           elements = elements.filter(e => e.id !== editId);
